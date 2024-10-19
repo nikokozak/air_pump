@@ -31,7 +31,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(ENCODER1_CLK), checkPosition, CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENCODER2_CLK), checkPosition, CHANGE);
   
-  Serial.begin(9600);
+  Serial.begin(115200);
   while (!Serial) {
     ; // Wait for serial port to connect
   }
