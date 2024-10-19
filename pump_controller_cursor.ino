@@ -40,59 +40,72 @@ void setup() {
 }
 
 void loop() {
+  static unsigned long lastSerialCheck = 0;
+  static unsigned long lastEncoderCheck = 0;
+  unsigned long currentMillis = millis();
+
+  // Check for serial input every 10ms
+  if (currentMillis - lastSerialCheck >= 10) {
+    lastSerialCheck = currentMillis;
+    if (Serial.available() > 0) {
+      char command = Serial.read();
+      handleCommand(command);
+    }
+  }
+
+  // Check encoder values and switches every 50ms
+  if (currentMillis - lastEncoderCheck >= 50) {
+    lastEncoderCheck = currentMillis;
+    checkEncoders();
+    checkEncoderSwitches();
+  }
+}
+
+void handleCommand(char command) {
+  switch (command) {
+    case '1':
+      pumpMotor(1);
+      break;
+    case '2':
+      pumpMotor(2);
+      break;
+    case 'a':
+      stopMotor(1);
+      break;
+    case 'b':
+      stopMotor(2);
+      break;
+    default:
+      Serial.println("Invalid command");
+  }
+}
+
+void checkEncoders() {
   static int lastPos1 = 0;
   static int lastPos2 = 0;
 
-  if (Serial.available() > 0) {
-    char command = Serial.read();
-    
-    // Clear any additional characters (like newline)
-    while(Serial.available() > 0) {
-      Serial.read();
-    }
-    
-    switch (command) {
-      case '1':
-        pumpMotor(1);
-        break;
-      case '2':
-        pumpMotor(2);
-        break;
-      case 'a':
-        stopMotor(1);
-        break;
-      case 'b':
-        stopMotor(2);
-        break;
-      default:
-        Serial.println("Invalid command");
-    }
-  }
-  
-  // Check encoder values
   int newPos1 = encoder1.getPosition();
   if (newPos1 != lastPos1) {
     Serial.print("E1:");
     Serial.println(newPos1);
     lastPos1 = newPos1;
   }
-  
+
   int newPos2 = encoder2.getPosition();
   if (newPos2 != lastPos2) {
     Serial.print("E2:");
     Serial.println(newPos2);
     lastPos2 = newPos2;
   }
-  
-  // Check encoder switches
+}
+
+void checkEncoderSwitches() {
   if (digitalRead(ENCODER1_SW) == LOW) {
     Serial.println("S1");
-    delay(200); // Debounce
   }
-  
+
   if (digitalRead(ENCODER2_SW) == LOW) {
     Serial.println("S2");
-    delay(200); // Debounce
   }
 }
 
