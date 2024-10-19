@@ -42,14 +42,20 @@ def record_audio(input_device_index=None):
         data = stream.read(CHUNK)
         frames.append(data)
         audio_data = np.frombuffer(data, dtype=np.int16)
-        # Calculate RMS (Root Mean Square)
-        rms = np.sqrt(np.mean(audio_data**2))
-        # Failsafe for zero RMS
+        
+        # Improved decibel calculation
+        audio_data_float = audio_data.astype(np.float32)
+        rms = np.sqrt(np.mean(audio_data_float**2))
+        
+        # Reference value for 16-bit audio
+        ref = 32768.0
+        
         if rms > 0:
-            decibels = 20 * np.log10(rms)
+            db = 20 * np.log10(rms / ref)
         else:
-            decibels = -np.inf  # Represents silence or no sound
-        print(f"Decibel Level: {decibels:.2f} dB")
+            db = -96  # Approximate lowest possible dB for 16-bit audio
+        
+        print(f"Decibel Level: {db:.2f} dB")
 
     print("Finished recording.")
 
