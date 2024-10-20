@@ -15,10 +15,10 @@ CHUNK = 1024
 FORMAT = pyaudio.paInt16
 CHANNELS = 2
 RATE = 48000
-RECORD_SECONDS = 5
+RECORD_SECONDS = 300
 WAVE_OUTPUT_FILENAME = "output.wav"
 DECIBEL_THRESHOLD = -20
-PLAYBACK_DECIBEL_THRESHOLD = -35  # Adjust this value as needed
+PLAYBACK_DECIBEL_THRESHOLD = -30  # Adjust this value as needed
 DEFAULT_ARDUINO_PORT = "/dev/cu.usbmodem1101"
 DEFAULT_INPUT_DEVICE = 0
 DEFAULT_OUTPUT_DEVICE = 1
@@ -248,7 +248,7 @@ def play_audio_stream(wf, stream):
     state = "OFF"
     on_count = off_count = 0
     ON_THRESHOLD = PLAYBACK_DECIBEL_THRESHOLD
-    OFF_THRESHOLD = PLAYBACK_DECIBEL_THRESHOLD - 3
+    OFF_THRESHOLD = PLAYBACK_DECIBEL_THRESHOLD # - 3
     STABILITY_COUNT = 3
 
     print("Playing...")
