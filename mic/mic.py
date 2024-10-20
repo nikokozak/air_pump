@@ -9,17 +9,17 @@ import librosa
 import soundfile as sf
 
 # Constants
-CHUNK = 1024  # Number of audio samples per buffer
-FORMAT = pyaudio.paInt16  # Audio format (16-bit PCM)
-CHANNELS = 2  # Number of audio channels
-RATE = 44100  # Sampling rate (samples per second)
-RECORD_SECONDS = 5  # Duration of recording
-WAVE_OUTPUT_FILENAME = "output.wav"  # Output file name
-DECIBEL_THRESHOLD = -20  # Add this line
+CHUNK = 1024
+FORMAT = pyaudio.paInt16
+CHANNELS = 2
+RATE = 48000
+RECORD_SECONDS = 5
+WAVE_OUTPUT_FILENAME = "output.wav"
+DECIBEL_THRESHOLD = -20
 
 # Global variables
 arduino_serial = None
-p = pyaudio.PyAudio()  # Initialize PyAudio
+p = pyaudio.PyAudio()
 DEFAULT_ARDUINO_PORT = "/dev/cu.usbmodem1101"
 DEFAULT_INPUT_DEVICE = 0
 DEFAULT_OUTPUT_DEVICE = 1
@@ -35,7 +35,62 @@ def list_devices():
             device_type.append("Output")
         print(f"Device {i}: {info['name']} ({', '.join(device_type)})")
 
+def initialize_serial(port, baud_rate):
+    global arduino_serial
+    try:
+        arduino_serial = serial.Serial(port, baud_rate, timeout=1)
+        time.sleep(2)
+        print(f"Serial connection established on {port}")
+    except serial.SerialException as e:
+        print(f"Failed to establish serial connection: {e}")
+        arduino_serial = None
+
+def send_message_to_arduino(message, max_retries=3):
+    global arduino_serial
+    retries = 0
+    while retries < max_retries:
+        print(f"Attempting to send message to Arduino: {message}")
+        if arduino_serial:
+            try:
+                arduino_serial.write(message.encode('utf-8'))
+                arduino_serial.flush()
+                print(f"Sent to Arduino: {message}")
+                return True
+            except serial.SerialException as e:
+                print(f"Error sending message to Arduino: {e}")
+                reset_arduino()
+            except Exception as e:
+                print(f"Unexpected error sending message to Arduino: {e}")
+        else:
+            print("Arduino not connected. Attempting to connect...")
+            initialize_serial(port, baud_rate)
+        
+        retries += 1
+        time.sleep(1)
+    
+    print(f"Failed to send message to Arduino after {max_retries} attempts")
+    return False
+
+def reset_arduino():
+    global arduino_serial
+    print("Resetting Arduino connection...")
+    if arduino_serial:
+        arduino_serial.close()
+    time.sleep(1)
+    initialize_serial(port, baud_rate)
+
+def check_arduino_connection():
+    global arduino_serial
+    if arduino_serial is None or not arduino_serial.is_open:
+        print("Arduino connection lost. Attempting to reconnect...")
+        initialize_serial(port, baud_rate)
+    return arduino_serial is not None and arduino_serial.is_open
+
 def record_audio(input_device_index=None):
+    if not check_arduino_connection():
+        print("Cannot record audio without Arduino connection.")
+        return
+
     print("Starting record_audio function")
     try:
         device_info = p.get_device_info_by_index(input_device_index if input_device_index is not None else p.get_default_input_device_info()['index'])
@@ -87,7 +142,7 @@ def record_audio(input_device_index=None):
                 threshold_exceeded = False
                 send_message_to_arduino("b")
 
-            time.sleep(0.001)  # Small delay to prevent potential hanging
+            time.sleep(0.001)
 
     except Exception as e:
         print(f"Error during recording loop: {e}")
@@ -100,7 +155,6 @@ def record_audio(input_device_index=None):
     except Exception as e:
         print(f"Error closing audio stream: {e}")
 
-    # Save the recorded data as a WAV file
     try:
         wf = wave.open(WAVE_OUTPUT_FILENAME, 'wb')
         wf.setnchannels(CHANNELS)
@@ -112,24 +166,39 @@ def record_audio(input_device_index=None):
     except Exception as e:
         print(f"Error saving WAV file: {e}")
 
-    # Send final stop message
     send_message_to_arduino("b")
     print("Sent final stop message to Arduino")
 
-import librosa
-import soundfile as sf
-
 def play_audio(file_name, output_device_index=None, playback_speed=0.5):
+    if not check_arduino_connection():
+        print("Cannot play audio without Arduino connection.")
+        return
+
     print("Starting play_audio function")
     try:
-        # Load and resample the audio
+        # Load the audio file
         y, sr = librosa.load(file_name, sr=None)
-        y_slow = librosa.resample(y, orig_sr=sr, target_sr=int(sr * playback_speed))
         
-        # Save the slowed down audio temporarily
-        sf.write('temp_slow.wav', y_slow, int(sr * playback_speed), subtype='PCM_16')
+        # Time-stretch the audio without changing pitch
+        y_slow = librosa.effects.time_stretch(y, rate=playback_speed)
         
-        # Open the slowed down audio file
+        # Get the number of channels in the original audio
+        num_channels = 2 if y.ndim > 1 and y.shape[1] > 1 else 1
+        
+        # Get the supported channels for the output device
+        device_info = p.get_device_info_by_index(output_device_index if output_device_index is not None else p.get_default_output_device_info()['index'])
+        supported_channels = device_info['maxOutputChannels']
+        
+        print(f"Audio channels: {num_channels}, Device supported channels: {supported_channels}")
+        
+        # Convert to mono if necessary
+        if num_channels > supported_channels:
+            print(f"Converting {num_channels} channels to {supported_channels} channels")
+            y_slow = librosa.to_mono(y_slow)
+            num_channels = 1
+        
+        # Write the time-stretched audio to a temporary file
+        sf.write('temp_slow.wav', y_slow, sr, subtype='PCM_16')
         wf = wave.open('temp_slow.wav', 'rb')
         print(f"Opened wave file successfully. Channels: {wf.getnchannels()}, Sample width: {wf.getsampwidth()}, Frame rate: {wf.getframerate()}")
     except Exception as e:
@@ -138,7 +207,7 @@ def play_audio(file_name, output_device_index=None, playback_speed=0.5):
 
     try:
         stream = p.open(format=p.get_format_from_width(wf.getsampwidth()),
-                        channels=wf.getnchannels(),
+                        channels=num_channels,
                         rate=wf.getframerate(),
                         output=True,
                         output_device_index=output_device_index)
@@ -152,8 +221,8 @@ def play_audio(file_name, output_device_index=None, playback_speed=0.5):
     on_count = 0
     off_count = 0
     ON_THRESHOLD = DECIBEL_THRESHOLD
-    OFF_THRESHOLD = DECIBEL_THRESHOLD - 3  # 3 dB lower for hysteresis
-    STABILITY_COUNT = 5  # Number of consecutive samples needed to change state
+    OFF_THRESHOLD = DECIBEL_THRESHOLD - 3
+    STABILITY_COUNT = 5
 
     print("Playing...")
 
@@ -175,7 +244,6 @@ def play_audio(file_name, output_device_index=None, playback_speed=0.5):
             
             print(f"Playback Decibel Level: {db:.2f} dB")
 
-            # State machine logic
             if state == "OFF":
                 if db > ON_THRESHOLD:
                     on_count += 1
@@ -210,77 +278,15 @@ def play_audio(file_name, output_device_index=None, playback_speed=0.5):
         stream.stop_stream()
         stream.close()
         wf.close()
-        os.remove('temp_slow.wav')  # Remove the temporary file
+        os.remove('temp_slow.wav')
 
     print("play_audio function completed")
-
-def initialize_serial(port, baud_rate):
-    global arduino_serial
-    try:
-        arduino_serial = serial.Serial(port, baud_rate, timeout=1)
-        time.sleep(2)  # Allow time for Arduino to reset
-        print(f"Serial connection established on {port}")
-    except serial.SerialException as e:
-        print(f"Failed to establish serial connection: {e}")
-        arduino_serial = None
-
-def read_from_arduino():
-    if arduino_serial and arduino_serial.in_waiting:
-        return arduino_serial.readline().decode('utf-8').strip()
-    return None
-
-def write_to_arduino(data):
-    if arduino_serial:
-        arduino_serial.write(data.encode('utf-8'))
-        arduino_serial.flush()
-
-def send_message_to_arduino(message, max_retries=3):
-    global arduino_serial
-    retries = 0
-    while retries < max_retries:
-        print(f"Attempting to send message to Arduino: {message}")
-        if arduino_serial:
-            try:
-                arduino_serial.write(message.encode('utf-8'))
-                arduino_serial.flush()
-                print(f"Sent to Arduino: {message}")
-                return True
-            except serial.SerialException as e:
-                print(f"Error sending message to Arduino: {e}")
-                print("Attempting to reconnect...")
-                reset_arduino()
-            except Exception as e:
-                print(f"Unexpected error sending message to Arduino: {e}")
-        else:
-            print("Arduino not connected. Attempting to connect...")
-            initialize_serial(port, baud_rate)
-        
-        retries += 1
-        time.sleep(1)  # Wait before retrying
-    
-    print(f"Failed to send message to Arduino after {max_retries} attempts")
-    return False
-
-def reset_arduino():
-    global arduino_serial
-    print("Resetting Arduino connection...")
-    if arduino_serial:
-        arduino_serial.close()
-    time.sleep(1)  # Wait a bit before reconnecting
-    initialize_serial(port, baud_rate)
-
-def arduino_watchdog():
-    global arduino_serial
-    if arduino_serial and not arduino_serial.is_open:
-        print("Arduino connection lost. Resetting...")
-        reset_arduino()
 
 def menu():
     global arduino_serial
     input_device_index = DEFAULT_INPUT_DEVICE
     output_device_index = DEFAULT_OUTPUT_DEVICE
 
-    # Initialize serial connection once
     if not arduino_serial:
         initialize_serial(port, baud_rate)
 
@@ -329,7 +335,7 @@ def menu():
 
 if __name__ == "__main__":
     port = input(f"Enter the Arduino serial port (or press Enter for default {DEFAULT_ARDUINO_PORT}): ") or DEFAULT_ARDUINO_PORT
-    baud_rate = 115200  # Make sure this matches the baud rate in your Arduino sketch
+    baud_rate = 115200
     initialize_serial(port, baud_rate)
     menu()
-    p.terminate()  # Terminate PyAudio when done
+    p.terminate()
