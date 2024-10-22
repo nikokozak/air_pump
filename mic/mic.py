@@ -23,6 +23,7 @@ DEFAULT_ARDUINO_PORT = "/dev/cu.usbmodem1101"
 DEFAULT_INPUT_DEVICE = 0
 DEFAULT_OUTPUT_DEVICE = 1
 BAUD_RATE = 115200
+PLAYBACK_SPEED = 1
 
 # Global variables
 arduino_serial = None
@@ -158,8 +159,30 @@ def record_audio(input_device_index=None):
     frames = []
     threshold_exceeded = False
 
+    stop_recording_event = threading.Event()  # Use an Event object
+
+    def listen_for_arduino_stop():
+        global arduino_serial
+        while not stop_recording_event.is_set():
+            if arduino_serial.in_waiting > 0:
+                message = arduino_serial.readline().decode('utf-8').strip()
+                print(message)
+                if message == "H":
+                    print("Received stop signal from Arduino. Ending recording.")
+                    stop_recording_event.set()  # Set the event
+                    return
+            time.sleep(0.1)
+
+    arduino_thread = threading.Thread(target=listen_for_arduino_stop)
+    arduino_thread.daemon = True
+    arduino_thread.start()
+
     try:
         for _ in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
+            if stop_recording_event.is_set():  # Check the event
+                print("Stopping recording due to Arduino signal")
+                break
+
             data = stream.read(CHUNK, exception_on_overflow=False)
             frames.append(data)
             audio_data = np.frombuffer(data, dtype=np.int16)
@@ -203,7 +226,7 @@ def save_wave_file(frames):
         print(f"Error saving WAV file: {e}")
 
 
-def play_audio(file_name, output_device_index=None, playback_speed=0.5):
+def play_audio(file_name, output_device_index=None, playback_speed=PLAYBACK_SPEED):
     """Play audio file with adjustable speed and send messages to Arduino based on volume."""
     if not check_arduino_connection():
         print("Cannot play audio without Arduino connection.")
@@ -312,6 +335,21 @@ def play_audio_stream(wf, stream):
         print("Sent final stop message to Arduino")
 
 
+def wait_for_arduino_message(expected_message="H", timeout=10):
+    """Wait for a specific message from Arduino."""
+    global arduino_serial
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if arduino_serial.in_waiting > 0:
+            message = arduino_serial.readline().decode('utf-8').strip()
+            print(f"Received from Arduino: {message}")
+            if message == expected_message:
+                return True
+        time.sleep(0.1)
+    print(f"Timeout waiting for message: {expected_message}")
+    return False
+
+
 def menu():
     """Main menu for user interaction."""
     global arduino_serial
@@ -323,34 +361,40 @@ def menu():
 
     while True:
         print("\nMenu:")
-        print("1. Record Audio")
-        print("2. Play Audio")
-        print("3. List devices and change input/output")
-        print("4. Exit")
+        print("1. Start system")
+        print("2. List devices and change input/output")
+        # print("1. Record Audio")
+        # print("2. Play Audio")
+        # print("3. List devices and change input/output")
+        print("3. Exit")
         choice = input("Enter your choice: ")
 
         print(f"You chose option: {choice}")
 
         if choice == '1':
-            print("Preparing to record audio...")
-            record_audio(input_device_index)
+            print("System ready")
+            while True:
+                if wait_for_arduino_message("H"):
+                    print("Arduino is ready, preparing to record audio...")
+                    record_audio(input_device_index)
+                    if wait_for_arduino_message("H"):
+                        print("Preparing to play audio...")
+                        if not os.path.exists(WAVE_OUTPUT_FILENAME):
+                            print(f"Error: Audio file {
+                                WAVE_OUTPUT_FILENAME} does not exist. Please record audio first.")
+                            continue
+                        play_audio(WAVE_OUTPUT_FILENAME, output_device_index)
+                    else:
+                        print("Failed to receive ready signal from Arduino.")
+                else:
+                    print("Failed to receive ready signal from Arduino.")
         elif choice == '2':
-            print("Preparing to play audio...")
-            if not os.path.exists(WAVE_OUTPUT_FILENAME):
-                print(f"Error: Audio file {
-                      WAVE_OUTPUT_FILENAME} does not exist. Please record audio first.")
-                continue
-            playback_speed = float(
-                input("Enter playback speed (e.g., 0.5 for half speed): ") or 1.0)
-            play_audio(WAVE_OUTPUT_FILENAME,
-                       output_device_index, playback_speed)
-        elif choice == '3':
             list_devices()
             input_device_index = int(input(
                 "Enter the input device index for recording (or press Enter for default): ") or DEFAULT_INPUT_DEVICE)
             output_device_index = int(input(
                 "Enter the output device index for playback (or press Enter for default): ") or DEFAULT_OUTPUT_DEVICE)
-        elif choice == '4':
+        elif choice == '3':
             break
         else:
             print("Invalid choice. Please try again.")
