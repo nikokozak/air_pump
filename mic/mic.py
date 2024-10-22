@@ -325,7 +325,7 @@ def menu():
         print("\nMenu:")
         print("1. Record Audio")
         print("2. Play Audio")
-        print("3. Re-list devices and change input/output")
+        print("3. List devices and change input/output")
         print("4. Exit")
         choice = input("Enter your choice: ")
 
