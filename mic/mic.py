@@ -13,22 +13,23 @@ import serial.tools.list_ports
 # Constants
 CHUNK = 1024
 FORMAT = pyaudio.paInt16
-CHANNELS = 2
+CHANNELS = 1 # This needs to be figured out in config.
 RATE = 48000
 RECORD_SECONDS = 300
 WAVE_OUTPUT_FILENAME = "output.wav"
-DECIBEL_THRESHOLD = -20
-PLAYBACK_DECIBEL_THRESHOLD = -30  # Adjust this value as needed
+DECIBEL_THRESHOLD = -25
+PLAYBACK_DECIBEL_THRESHOLD = -30  # Adjust this value as needed - make interactive system to do so.
 DEFAULT_ARDUINO_PORT = "/dev/cu.usbmodem1101"
 DEFAULT_INPUT_DEVICE = 0
 DEFAULT_OUTPUT_DEVICE = 1
 BAUD_RATE = 115200
-PLAYBACK_SPEED = 1
+PLAYBACK_SPEED = 0.8
 
 # Global variables
 arduino_serial = None
 p = pyaudio.PyAudio()
 
+############## Config Menu #######################
 
 def list_devices():
     """List all available audio devices."""
@@ -42,6 +43,7 @@ def list_devices():
             device_type.append("Output")
         print(f"Device {i}: {info['name']} ({', '.join(device_type)})")
 
+############### ARDUINO ######################
 
 def find_arduino_port():
     """
@@ -130,6 +132,7 @@ def check_arduino_connection():
         initialize_serial()
     return arduino_serial is not None and arduino_serial.is_open
 
+########################## AUDIO ###############################
 
 def calculate_db(audio_data):
     """Calculate decibel level from audio data."""
@@ -227,7 +230,7 @@ def save_wave_file(frames):
 
 
 def play_audio(file_name, output_device_index=None, playback_speed=PLAYBACK_SPEED):
-    """Play audio file with adjustable speed and send messages to Arduino based on volume."""
+    """Play audio file in reverse with adjustable speed and send messages to Arduino based on volume."""
     if not check_arduino_connection():
         print("Cannot play audio without Arduino connection.")
         return
@@ -235,26 +238,24 @@ def play_audio(file_name, output_device_index=None, playback_speed=PLAYBACK_SPEE
     print("Starting play_audio function")
     try:
         y, sr = librosa.load(file_name, sr=None)
-        y_slow = librosa.effects.time_stretch(y, rate=playback_speed)
+        y_reversed = y[::-1]  # Reverse the audio data
+        y_slow = librosa.effects.time_stretch(y_reversed, rate=playback_speed)
 
         num_channels = 2 if y.ndim > 1 and y.shape[1] > 1 else 1
         device_info = p.get_device_info_by_index(
             output_device_index or p.get_default_output_device_info()['index'])
         supported_channels = device_info['maxOutputChannels']
 
-        print(f"Audio channels: {num_channels}, Device supported channels: {
-              supported_channels}")
+        print(f"Audio channels: {num_channels}, Device supported channels: {supported_channels}")
 
         if num_channels > supported_channels:
-            print(f"Converting {num_channels} channels to {
-                  supported_channels} channels")
+            print(f"Converting {num_channels} channels to {supported_channels} channels")
             y_slow = librosa.to_mono(y_slow)
             num_channels = 1
 
-        sf.write('temp_slow.wav', y_slow, sr, subtype='PCM_16')
-        wf = wave.open('temp_slow.wav', 'rb')
-        print(f"Opened wave file successfully. Channels: {wf.getnchannels(
-        )}, Sample width: {wf.getsampwidth()}, Frame rate: {wf.getframerate()}")
+        sf.write('temp_reversed.wav', y_slow, sr, subtype='PCM_16')
+        wf = wave.open('temp_reversed.wav', 'rb')
+        print(f"Opened wave file successfully. Channels: {wf.getnchannels()}, Sample width: {wf.getsampwidth()}, Frame rate: {wf.getframerate()}")
     except Exception as e:
         print(f"Error opening or processing wave file: {e}")
         return
@@ -276,7 +277,7 @@ def play_audio(file_name, output_device_index=None, playback_speed=PLAYBACK_SPEE
     stream.stop_stream()
     stream.close()
     wf.close()
-    os.remove('temp_slow.wav')
+    os.remove('temp_reversed.wav')
 
     print("play_audio function completed")
 
@@ -307,8 +308,7 @@ def play_audio_stream(wf, stream):
                     if on_count >= STABILITY_COUNT:
                         state = "ON"
                         send_message_to_arduino("1")
-                        print(f"Threshold exceeded ({
-                              ON_THRESHOLD} dB), turning ON")
+                        print(f"Threshold exceeded ({ON_THRESHOLD} dB), turning ON")
                 else:
                     on_count = 0
             elif state == "ON":
@@ -335,6 +335,8 @@ def play_audio_stream(wf, stream):
         print("Sent final stop message to Arduino")
 
 
+######################## ARDUINO ################################
+
 def wait_for_arduino_message(expected_message="H", timeout=10):
     """Wait for a specific message from Arduino."""
     global arduino_serial
@@ -349,6 +351,7 @@ def wait_for_arduino_message(expected_message="H", timeout=10):
     print(f"Timeout waiting for message: {expected_message}")
     return False
 
+######################### CONFIG MENU ##############################
 
 def menu():
     """Main menu for user interaction."""
@@ -380,8 +383,7 @@ def menu():
                     if wait_for_arduino_message("H"):
                         print("Preparing to play audio...")
                         if not os.path.exists(WAVE_OUTPUT_FILENAME):
-                            print(f"Error: Audio file {
-                                WAVE_OUTPUT_FILENAME} does not exist. Please record audio first.")
+                            print(f"Error: Audio file {WAVE_OUTPUT_FILENAME} does not exist. Please record audio first.")
                             continue
                         play_audio(WAVE_OUTPUT_FILENAME, output_device_index)
                     else:
