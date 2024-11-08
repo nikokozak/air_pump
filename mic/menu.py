@@ -1,6 +1,9 @@
 from mic.arduino import initialize_serial, wait_for_arduino_message
 from mic.sound import record_audio, play_audio, WAVE_OUTPUT_FILENAME
 import os
+import pyaudio
+
+p = pyaudio.PyAudio()
 
 DEFAULT_INPUT_DEVICE = 0
 DEFAULT_OUTPUT_DEVICE = 1
