@@ -111,7 +111,8 @@ void checkEncoderSwitches() {
 
 void pumpMotor(int motorNumber) {
   int motorPin = (motorNumber == 1) ? MOTOR1_PIN : MOTOR2_PIN;
-  digitalWrite(motorPin, HIGH);
+  //digitalWrite(motorPin, HIGH);
+  analogWrite(motorPin, 127);
   Serial.print("Motor ");
   Serial.print(motorNumber);
   Serial.println(" pumping");
