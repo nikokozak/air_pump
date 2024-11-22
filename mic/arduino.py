@@ -5,6 +5,7 @@ import time
 BAUD_RATE = 115200
 arduino_serial = None
 
+
 def find_arduino_port():
     """
     Automatically detect the Arduino port on macOS.
@@ -29,6 +30,7 @@ def find_arduino_port():
     print("No responsive Arduino port found.")
     return None
 
+
 def initialize_serial():
     """Initialize serial connection with Arduino."""
     global arduino_serial
@@ -46,6 +48,7 @@ def initialize_serial():
         print(f"Failed to establish serial connection: {e}")
         arduino_serial = None
         return False
+
 
 def send_message_to_arduino(message, max_retries=3):
     """Send a message to Arduino with retry mechanism."""
@@ -70,6 +73,8 @@ def send_message_to_arduino(message, max_retries=3):
 
     print(f"Failed to send message to Arduino after {max_retries} attempts")
     return False
+
+
 def reset_arduino():
     """Reset the Arduino connection."""
     global arduino_serial
@@ -79,6 +84,7 @@ def reset_arduino():
     time.sleep(1)
     initialize_serial()
 
+
 def check_arduino_connection():
     """Check and attempt to reconnect to Arduino if necessary."""
     global arduino_serial
@@ -86,6 +92,7 @@ def check_arduino_connection():
         print("Arduino connection lost. Attempting to reconnect...")
         initialize_serial()
     return arduino_serial is not None and arduino_serial.is_open
+
 
 def wait_for_arduino_message(expected_message="H", timeout=10):
     """Wait for a specific message from Arduino."""
@@ -100,3 +107,4 @@ def wait_for_arduino_message(expected_message="H", timeout=10):
         time.sleep(0.1)
     print(f"Timeout waiting for message: {expected_message}")
     return False
+

@@ -1,5 +1,5 @@
-from mic.arduino import initialize_serial, wait_for_arduino_message
-from mic.sound import record_audio, play_audio, WAVE_OUTPUT_FILENAME
+from .arduino import initialize_serial, wait_for_arduino_message
+from .sound import record_audio, play_audio, WAVE_OUTPUT_FILENAME
 import os
 import pyaudio
 
@@ -7,6 +7,7 @@ p = pyaudio.PyAudio()
 
 DEFAULT_INPUT_DEVICE = 0
 DEFAULT_OUTPUT_DEVICE = 1
+
 
 def list_devices():
     """List all available audio devices."""
@@ -19,6 +20,7 @@ def list_devices():
         if info['maxOutputChannels'] > 0:
             device_type.append("Output")
         print(f"Device {i}: {info['name']} ({', '.join(device_type)})")
+
 
 def menu():
     """Main menu for user interaction."""
@@ -50,7 +52,8 @@ def menu():
                     if wait_for_arduino_message("H"):
                         print("Preparing to play audio...")
                         if not os.path.exists(WAVE_OUTPUT_FILENAME):
-                            print(f"Error: Audio file {WAVE_OUTPUT_FILENAME} does not exist. Please record audio first.")
+                            print(f"Error: Audio file {
+                                  WAVE_OUTPUT_FILENAME} does not exist. Please record audio first.")
                             continue
                         play_audio(WAVE_OUTPUT_FILENAME, output_device_index)
                     else:
