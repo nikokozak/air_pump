@@ -109,6 +109,24 @@ void checkEncoderSwitches() {
   }
 }
 
+void send(int pinNumber, int speed) {
+  analogWrite(pinNumber, speed);
+}
+
+void start(int pinNumber, int speed = 127) {
+  send(pinNumber, speed);
+  Serial.print("Motor ");
+  Serial.print(pinNumber);
+  Serial.println(" pumping");
+}
+
+void stop(int pinNumber) {
+  send(pinNumber, 0);
+  Serial.print("Motor ");
+  Serial.print(pinNumber);
+  Serial.println(" stopped");
+}
+
 void pumpMotor(int motorNumber) {
   int motorPin = (motorNumber == 1) ? MOTOR1_PIN : MOTOR2_PIN;
   //digitalWrite(motorPin, HIGH);
